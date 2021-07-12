@@ -1,0 +1,88 @@
+version: '3.7'
+services:
+  es01:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.13.3
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+    # - node.name=elasticsearch
+    #   - cluster.name=es-docker-cluster
+    #   - discovery.seed_hosts=es02,es03
+    #   - cluster.initial_master_nodes=es01,es02,es03
+    # - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - ./data01:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - kafka_net
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.13.3
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - MONITORING_ENABLED=true
+      # - server.host=0.0.0.0
+      # - "discovery.zen.ping.unicast.hosts=elasticsearch"
+    volumes:
+      - ./kibana.yml:/usr/share/kibana/config/kibana.yml
+    ports:
+      - "5601:5601"
+    networks:
+      - kafka_net
+    # restart: always
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:7.13.3
+    container_name: logstash
+    ports:
+      - "5044:5044"
+      - "9600:9600"
+    networks:
+      - kafka_net
+    # restart: always
+
+  filebeat:
+    # build: .
+    image: docker.elastic.co/beats/filebeat:7.13.3
+    container_name: filebeat
+    user: root
+    command:
+      - -e
+      - --strict.perms=false
+    environment:
+      - output.elasticsearch.hosts=["elasticsearch:9200"]
+    volumes:
+      - type: bind
+        source: ./filebeat.docker.yml
+        target: /usr/share/filebeat/config/filebeat.yml
+        read_only: true
+      - type: bind
+        source: /var/run/docker.sock
+        target: /host_docker/docker.sock
+        read_only: true
+      - type: bind
+        source: /var/lib/docker
+        target: /host_docker/var/lib/docker
+        read_only: true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    networks:
+      - kafka_net
+
+networks:
+  default:
+    external:
+      name: bridge
+  kafka_net:
+    driver: bridge
+    name: kafka_net
